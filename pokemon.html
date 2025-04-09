@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Pokémon Battle</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.5.0/dist/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #f0f0f0;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .pixel-btn {
+            background-color: #ffcb05;
+            color: #3c5aa6;
+            border: 4px solid #2a75bb;
+            padding: 10px 20px;
+            font-family: 'Press Start 2P', cursive;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #c7a008;
+        }
+
+        .pixel-btn:hover {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #c7a008;
+        }
+
+        .pixel-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .battle-background {
+            background-image: url('https://cdn.jsdelivr.net/gh/Pokémon/sprites@master/sprites/backgrounds/gen1/battle-grass.png');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .pokemon-sprite {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .healthbar {
+            height: 8px;
+            background-color: #ff5959;
+            position: relative;
+            border: 2px solid #333;
+        }
+
+        .healthbar-inner {
+            height: 100%;
+            background-color: #3ded97;
+            transition: width 0.5s;
+        }
+
+        .move-btn {
+            background-color: #f8f8f8;
+            border: 2px solid #333;
+            font-size: 0.8rem;
+            transition: all 0.1s;
+        }
+
+        .move-btn:hover {
+            background-color: #e0e0e0;
+        }
+
+        .battle-message {
+            background-color: white;
+            border: 4px solid #333;
+            border-radius: 0;
+            padding: 15px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .pokemon-card {
+            border: 4px solid #3c5aa6;
+            background-color: #f8f8f8;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .pokemon-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .pokemon-card.selected {
+            border-color: #ffcb05;
+            background-color: #fffbe6;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        .game-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .type-normal { background-color: #A8A878; }
+        .type-fire { background-color: #F08030; }
+        .type-water { background-color: #6890F0; }
+        .type-grass { background-color: #78C850; }
+        .type-electric { background-color: #F8D030; }
+        .type-ice { background-color: #98D8D8; }
+        .type-fighting { background-color: #C03028; }
+        .type-poison { background-color: #A040A0; }
+        .type-ground { background-color: #E0C068; }
+        .type-flying { background-color: #A890F0; }
+        .type-psychic { background-color: #F85888; }
+        .type-bug { background-color: #A8B820; }
+        .type-rock { background-color: #B8A038; }
+        .type-ghost { background-color: #705898; }
+        .type-dragon { background-color: #7038F8; }
+        .type-dark { background-color: #705848; }
+        .type-steel { background-color: #B8B8D0; }
+        .type-fairy { background-color: #EE99AC; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes attackRight {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(20px); }
+            100% { transform: translateX(0); }
+        }
+
+        @keyframes attackLeft {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(-20px); }
+            100% { transform: translateX(0); }
+        }
+
+        .attack-right {
+            animation: attackRight 0.5s;
+        }
+
+        .attack-left {
+            animation: attackLeft 0.5s;
+        }
+
+        @keyframes damage {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .damage {
+            animation: damage 0.3s;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* For better PDF export */
+        @media print {
+            body {
+                width: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            
+            .screen {
+                page-break-inside: avoid;
+                display: block;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="game-container p-4">
+        <!-- Welcome Screen -->
+        <div id="welcome-screen" class="screen active">
+            <div class="text-center py-10">
+                <h1 class="text-4xl text-center mb-6 text-blue-800">Pixel Pokémon Battle</h1>
+                <div class="my-8">
+                    <img src="https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/versions/generation-v/black-white/animated/25.gif" 
+                         alt="Pikachu" class="mx-auto h-32 pokemon-sprite">
+                </div>
+                <p class="mb-8 px-4">Battle your Pokémon against other trainers in real-time!</p>
+                <div class="my-6">
+                    <input type="text" id="player-name" placeholder="Enter your trainer name" 
+                           class="p-3 border-4 border-blue-700 w-64 text-center font-bold mb-4">
+                </div>
+                <button id="enter-game-btn" class="pixel-btn mx-auto mt-4">Start Game</button>
+                
+                <div class="mt-12 text-sm opacity-75">
+                    <p>Note: This game requires an active server to play with other trainers.</p>
+                    <p>Currently operating in demo mode.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pokémon Selection Screen -->
+        <div id="selection-screen" class="screen">
+            <h2 class="text-2xl text-center my-6">Choose Your Pokémon Team</h2>
+            <p class="text-center mb-4">Select 3 Pokémon for your battle team</p>
+            
+            <div class="selected-team bg-gray-100 p-4 mb-6 border-4 border-blue-700">
+                <h3 class="text-lg mb-3">Your Team (<span id="team-count">0</span>/3):</h3>
+                <div id="selected-pokemon-container" class="flex flex-wrap justify-start"></div>
+            </div>
+            
+            <div class="pokedex-container">
+                <div class="flex justify-between mb-4">
+                    <h3 class="text-lg">Pokédex</h3>
+                    <div>
+                        <input type="text" id="pokemon-search" placeholder="Search Pokémon" 
+                               class="p-2 border-2 border-gray-300 rounded w-48">
+                    </div>
+                </div>
+                <div id="pokemon-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+            </div>
+            
+            <div class="text-center mt-8">
+                <button id="continue-to-lobby" class="pixel-btn mx-auto" disabled>Continue to Lobby</button>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen">
+            <h2 class="text-2xl text-center my-6">Battle Lobby</h2>
+            
+            <div class="battle-options flex flex-col items-center mb-8">
+                <div class="mb-6 text-center">
+                    <h3 class="text-lg mb-3">Ready to battle?</h3>
+                    <p class="mb-4">Find an opponent to challenge your team!</p>
+                    <button id="find-match-btn" class="pixel-btn">Find Match</button>
+                </div>
+                
+                <div id="waiting-indicator" class="hidden text-center my-4">
+                    <p>Searching for opponent...</p>
+                    <div class="loader mt-2 mx-auto w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                
+                <div id="opponent-found" class="hidden bg-green-100 p-4 border-2 border-green-500 rounded-lg my-4 w-full max-w-md text-center">
+                    <p>Opponent found! Get ready for battle...</p>
+                    <p id="opponent-name" class="font-bold mt-2">Trainer Red</p>
+                </div>
+            </div>
+            
+            <div class="your-team bg-gray-100 p-4 border-4 border-blue-700 mb-6">
+                <h3 class="text-lg mb-3">Your Team:</h3>
+                <div id="lobby-team-display" class="flex flex-wrap justify-center gap-4"></div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button id="back-to-selection" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">Back to Selection</button>
+            </div>
+        </div>
+
+        <!-- Battle Screen -->
+        <div id="battle-screen" class="screen">
+            <div class="battle-arena relative bg-green-100 border-4 border-gray-700 p-4 h-96 mb-6 overflow-hidden battle-background">
+                <!-- Opponent's Pokémon -->
+                <div class="opponent-area flex flex-col items-start mb-12">
+                    <div class="pokemon-info bg-white border-2 border-gray-700 p-2 rounded mb-2 w-48">
+                        <div class="flex justify-between items-center mb-1">
+                            <span id="opponent-pokemon-name" class="font-bold text-sm">Charizard</span>
+                            <span class="text-xs">Lv.50</span>
+                        </div>
+                        <div class="health-container">
+                            <span class="text-xs">HP:</span>
+                            <div class="healthbar mt-1">
+                                <div id="opponent-health" class="healthbar-inner" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="opponent-pokemon-container" class="pokemon-sprite-container mt-2">
+                        <img id="opponent-pokemon-sprite" src="https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/versions/generation-v/black-white/animated/back/6.gif" 
+                             alt="Opponent's Pokémon" class="pokemon-sprite h-24">
+                    </div>
+                </div>
+                
+                <!-- Player's Pokémon -->
+                <div class="player-area absolute bottom-4 right-4">
+                    <div id="player-pokemon-container" class="pokemon-sprite-container mb-2">
+                        <img id="player-pokemon-sprite" src="https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/versions/generation-v/black-white/animated/6.gif" 
+                             alt="Your Pokémon" class="pokemon-sprite h-24">
+                    </div>
+                    <div class="pokemon-info bg-white border-2 border-gray-700 p-2 rounded mt-2 w-48">
+                        <div class="flex justify-between items-center mb-1">
+                            <span id="player-pokemon-name" class="font-bold text-sm">Charizard</span>
+                            <span class="text-xs">Lv.50</span>
+                        </div>
+                        <div class="health-container">
+                            <span class="text-xs">HP:</span>
+                            <div class="healthbar mt-1">
+                                <div id="player-health" class="healthbar-inner" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Battle Control Area -->
+            <div class="battle-controls">
+                <!-- Battle Message -->
+                <div id="battle-message" class="battle-message mb-4">
+                    What will your Pokémon do?
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons grid grid-cols-2 gap-2 mb-4">
+                    <button id="fight-btn" class="pixel-btn">Fight</button>
+                    <button id="switch-btn" class="pixel-btn">Switch</button>
+                </div>
+                
+                <!-- Moves Panel -->
+                <div id="moves-panel" class="moves-grid grid grid-cols-2 gap-2 hidden">
+                    <button class="move-btn p-3 type-fire" data-move="Flamethrower" data-type="fire">Flamethrower</button>
+                    <button class="move-btn p-3 type-flying" data-move="Air Slash" data-type="flying">Air Slash</button>
+                    <button class="move-btn p-3 type-normal" data-move="Slash" data-type="normal">Slash</button>
+                    <button class="move-btn p-3 type-dragon" data-move="Dragon Claw" data-type="dragon">Dragon Claw</button>
+                </div>
+                
+                <!-- Switch Panel -->
+                <div id="switch-panel" class="switch-grid grid grid-cols-3 gap-2 hidden">
+                    <!-- Will be filled dynamically -->
+                </div>
+                
+                <!-- Back Button -->
+                <button id="back-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded hidden">Back</button>
+            </div>
+            
+            <!-- Battle End Screen (Hidden initially) -->
+            <div id="battle-end" class="battle-end-screen hidden text-center my-8 p-6 bg-white border-4 border-blue-700">
+                <h3 class="text-2xl mb-4">Battle Finished!</h3>
+                <p id="battle-result" class="text-xl mb-6 font-bold">You Win!</p>
+                <button id="return-to-lobby" class="pixel-btn">Return to Lobby</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game state management
+        const gameState = {
+            currentScreen: 'welcome-screen',
+            playerName: '',
+            selectedTeam: [],
+            currentBattle: {
+                playerPokemon: null,
+                opponentPokemon: null,
+                playerHealth: 100,
+                opponentHealth: 100,
+                turn: 'player', // 'player' or 'opponent'
+                battleActive: false
+            },
+            availablePokemon: [
+                {id: 1, name: "Bulbasaur", types: ["grass", "poison"], hp: 45, moves: [
+                    {name: "Vine Whip", type: "grass", power: 45},
+                    {name: "Tackle", type: "normal", power: 40},
+                    {name: "Razor Leaf", type: "grass", power: 55},
+                    {name: "Take Down", type: "normal", power: 90}
+                ]},
+                {id: 4, name: "Charmander", types: ["fire"], hp: 39, moves: [
+                    {name: "Scratch", type: "normal", power: 40},
+                    {name: "Ember", type: "fire", power: 40},
+                    {name: "Dragon Breath", type: "dragon", power: 60},
+                    {name: "Fire Fang", type: "fire", power: 65}
+                ]},
+                {id: 7, name: "Squirtle", types: ["water"], hp: 44, moves: [
+                    {name: "Tackle", type: "normal", power: 40},
+                    {name: "Water Gun", type: "water", power: 40},
+                    {name: "Bite", type: "dark", power: 60},
+                    {name: "Aqua Tail", type: "water", power: 90}
+                ]},
+                {id: 25, name: "Pikachu", types: ["electric"], hp: 35, moves: [
+                    {name: "Thunder Shock", type: "electric", power: 40},
+                    {name: "Quick Attack", type: "normal", power: 40},
+                    {name: "Thunderbolt", type: "electric", power: 90},
+                    {name: "Iron Tail", type: "steel", power: 100}
+                ]},
+                {id: 6, name: "Charizard", types: ["fire", "flying"], hp: 78, moves: [
+                    {name: "Flamethrower", type: "fire", power: 90},
+                    {name: "Air Slash", type: "flying", power: 75},
+                    {name: "Dragon Claw", type: "dragon", power: 80},
+                    {name: "Slash", type: "normal", power: 70}
+                ]},
+                {id: 9, name: "Blastoise", types: ["water"], hp: 79, moves: [
+                    {name: "Water Gun", type: "water", power: 40},
+                    {name: "Hydro Pump", type: "water", power: 110},
+                    {name: "Ice Beam", type: "ice", power: 90},
+                    {name: "Flash Cannon", type: "steel", power: 80}
+                ]},
+                {id: 3, name: "Venusaur", types: ["grass", "poison"], hp: 80, moves: [
+                    {name: "Razor Leaf", type: "grass", power: 55},
+                    {name: "Sludge Bomb", type: "poison", power: 90},
+                    {name: "Solar Beam", type: "grass", power: 120},
+                    {name: "Earthquake", type: "ground", power: 100}
+                ]},
+                {id: 149, name: "Dragonite", types: ["dragon", "flying"], hp: 91, moves: [
+                    {name: "Dragon Claw", type: "dragon", power: 80},
+                    {name: "Fire Punch", type: "fire", power: 75},
+                    {name: "Thunder Punch", type: "electric", power: 75},
+                    {name: "Hyper Beam", type: "normal", power: 150}
+                ]},
+                {id: 150, name: "Mewtwo", types: ["psychic"], hp: 106, moves: [
+                    {name: "Psychic", type: "psychic", power: 90},
+                    {name: "Shadow Ball", type: "ghost", power: 80},
+                    {name: "Aura Sphere", type: "fighting", power: 80},
+                    {name: "Ice Beam", type: "ice", power: 90}
+                ]},
+                {id: 94, name: "Gengar", types: ["ghost", "poison"], hp: 60, moves: [
+                    {name: "Shadow Ball", type: "ghost", power: 80},
+                    {name: "Sludge Bomb", type: "poison", power: 90},
+                    {name: "Dream Eater", type: "psychic", power: 100},
+                    {name: "Dark Pulse", type: "dark", power: 80}
+                ]},
+                {id: 59, name: "Arcanine", types: ["fire"], hp: 90, moves: [
+                    {name: "Flamethrower", type: "fire", power: 90},
+                    {name: "Crunch", type: "dark", power: 80},
+                    {name: "Extreme Speed", type: "normal", power: 80},
+                    {name: "Wild Charge", type: "electric", power: 90}
+                ]},
+                {id: 130, name: "Gyarados", types: ["water", "flying"], hp: 95, moves: [
+                    {name: "Hydro Pump", type: "water", power: 110},
+                    {name: "Crunch", type: "dark", power: 80},
+                    {name: "Ice Fang", type: "ice", power: 65},
+                    {name: "Hurricane", type: "flying", power: 110}
+                ]}
+            ],
+            socket: null
+        };
+
+        // DOM elements
+        const elements = {
+            screens: {
+                welcome: document.getElementById('welcome-screen'),
+                selection: document.getElementById('selection-screen'),
+                lobby: document.getElementById('lobby-screen'),
+                battle: document.getElementById('battle-screen')
+            },
+            welcome: {
+                playerNameInput: document.getElementById('player-name'),
+                enterGameBtn: document.getElementById('enter-game-btn')
+            },
+            selection: {
+                pokemonGrid: document.getElementById('pokemon-grid'),
+                selectedContainer: document.getElementById('selected-pokemon-container'),
+                teamCount: document.getElementById('team-count'),
+                continueBtn: document.getElementById('continue-to-lobby'),
+                searchInput: document.getElementById('pokemon-search')
+            },
+            lobby: {
+                teamDisplay: document.getElementById('lobby-team-display'),
+                findMatchBtn: document.getElementById('find-match-btn'),
+                waitingIndicator: document.getElementById('waiting-indicator'),
+                opponentFound: document.getElementById('opponent-found'),
+                opponentName: document.getElementById('opponent-name'),
+                backToSelectionBtn: document.getElementById('back-to-selection')
+            },
+            battle: {
+                opponentPokemonName: document.getElementById('opponent-pokemon-name'),
+                opponentPokemonSprite: document.getElementById('opponent-pokemon-sprite'),
+                opponentHealth: document.getElementById('opponent-health'),
+                playerPokemonName: document.getElementById('player-pokemon-name'),
+                playerPokemonSprite: document.getElementById('player-pokemon-sprite'),
+                playerHealth: document.getElementById('player-health'),
+                battleMessage: document.getElementById('battle-message'),
+                fightBtn: document.getElementById('fight-btn'),
+                switchBtn: document.getElementById('switch-btn'),
+                movesPanel: document.getElementById('moves-panel'),
+                switchPanel: document.getElementById('switch-panel'),
+                backBtn: document.getElementById('back-btn'),
+                battleEnd: document.getElementById('battle-end'),
+                battleResult: document.getElementById('battle-result'),
+                returnToLobbyBtn: document.getElementById('return-to-lobby')
+            }
+        };
+
+        // Utility functions
+        function showScreen(screenId) {
+            // Hide all screens
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            
+            // Show target screen
+            document.getElementById(screenId).classList.add('active');
+            gameState.currentScreen = screenId;
+        }
+
+        function getPokemonImageUrl(pokemonId, isOpponent = false) {
+            const baseUrl = "https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/versions/generation-v/black-white/animated/";
+            return isOpponent 
+                ? `${baseUrl}back/${pokemonId}.gif`
+                : `${baseUrl}${pokemonId}.gif`;
+        }
+
+        function getTypeColor(type) {
+            return `type-${type.toLowerCase()}`;
+        }
+
+        // Initialize Pokemon Selection
+        function initializePokemonSelection() {
+            const pokemonGrid = elements.selection.pokemonGrid;
+            pokemonGrid.innerHTML = '';
+            
+            gameState.availablePokemon.forEach(pokemon => {
+                const pokemonCard = document.createElement('div');
+                pokemonCard.className = 'pokemon-card p-4 flex flex-col items-center';
+                pokemonCard.dataset.id = pokemon.id;
+                
+                // Create type badges
+                const typeHTML = pokemon.types.map(type => 
+                    `<span class="text-xs text-white px-2 py-1 rounded ${getTypeColor(type)} mr-1">${type}</span>`
+                ).join('');
+                
+                pokemonCard.innerHTML = `
+                    <img src="${getPokemonImageUrl(pokemon.id)}" alt="${pokemon.name}" class="pokemon-sprite h-24 mb-2">
+                    <h3 class="text-md font-bold">${pokemon.name}</h3>
+                    <div class="types flex mt-1">${typeHTML}</div>
+                    <div class="mt-2 text-sm">HP: ${pokemon.hp}</div>
+                `;
+                
+                pokemonCard.addEventListener('click', () => selectPokemon(pokemon));
+                pokemonGrid.appendChild(pokemonCard);
+            });
+        }
+
+        // Select Pokemon for team
+        function selectPokemon(pokemon) {
+            if (gameState.selectedTeam.length >= 3 && 
+                !gameState.selectedTeam.some(p => p.id === pokemon.id)) {
+                alert("You can only select 3 Pokémon for your team!");
+                return;
+            }
+            
+            // If already selected, remove from team
+            const existingIndex = gameState.selectedTeam.findIndex(p => p.id === pokemon.id);
+            if (existingIndex !== -1) {
+                gameState.selectedTeam.splice(existingIndex, 1);
+                document.querySelector(`.pokemon-card[data-id="${pokemon.id}"]`).classList.remove('selected');
+            } else {
+                // Add to team
+                gameState.selectedTeam.push(pokemon);
+                document.querySelector(`.pokemon-card[data-id="${pokemon.id}"]`).classList.add('selected');
+            }
+            
+            // Update team display
+            updateSelectedTeam();
+        }
+
+        // Update the selected team display
+        function updateSelectedTeam() {
+            const container = elements.selection.selectedContainer;
+            container.innerHTML = '';
+            
+            if (gameState.selectedTeam.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No Pokémon selected yet</p>';
+            } else {
+                gameState.selectedTeam.forEach(pokemon => {
+                    const pokemonItem = document.createElement('div');
+                    pokemonItem.className = 'selected-pokemon-item flex items-center bg-white p-2 border-2 border-gray-300 rounded mr-2 mb-2';
+                    
+                    const typeHTML = pokemon.types.map(type => 
+                        `<span class="text-xs text-white px-1 py-0.5 rounded ${getTypeColor(type)} mr-1">${type}</span>`
+                    ).join('');
+                    
+                    pokemonItem.innerHTML = `
+                        <img src="${getPokemonImageUrl(pokemon.id)}" alt="${pokemon.name}" class="pokemon-sprite h-12 mr-2">
+                        <div>
+                            <h4 class="text-sm font-bold">${pokemon.name}</h4>
+                            <div class="types flex mt-1">${typeHTML}</div>
+                        </div>
+                        <button class="remove-pokemon ml-2 text-red-500 text-xl" data-id="${pokemon.id}">&times;</button>
+                    `;
+                    
+                    container.appendChild(pokemonItem);
+                });
+                
+                // Add event listeners to remove buttons
+                document.querySelectorAll('.remove-pokemon').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const pokemonId = parseInt(btn.dataset.id);
+                        const index = gameState.selectedTeam.findIndex(p => p.id === pokemonId);
+                        if (index !== -1) {
+                            gameState.selectedTeam.splice(index, 1);
+                            document.querySelector(`.pokemon-card[data-id="${pokemonId}"]`).classList.remove('selected');
+                            updateSelectedTeam();
+                        }
+                    });
+                });
+            }
+            
+            // Update team count and continue button state
+            elements.selection.teamCount.textContent = gameState.selectedTeam.length;
+            elements.selection.continueBtn.disabled = gameState.selectedTeam.length !== 3;
+            
+            if (gameState.selectedTeam.length === 3) {
+                elements.selection.continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                elements.selection.continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // Update Lobby Team Display
+        function updateLobbyTeamDisplay() {
+            const container = elements.lobby.teamDisplay;
+            container.innerHTML = '';
+            
+            gameState.selectedTeam.forEach(pokemon => {
+                const pokemonCard = document.createElement('div');
+                pokemonCard.className = 'pokemon-lobby-card p-3 bg-white border-2 border-gray-300 rounded flex flex-col items-center';
+                
+                const typeHTML = pokemon.types.map(type => 
+                    `<span class="text-xs text-white px-2 py-1 rounded ${getTypeColor(type)} mr-1">${type}</span>`
+                ).join('');
+                
+                pokemonCard.innerHTML = `
+                    <img src="${getPokemonImageUrl(pokemon.id)}" alt="${pokemon.name}" class="pokemon-sprite h-16 mb-2">
+                    <h3 class="text-sm font-bold">${pokemon.name}</h3>
+                    <div class="types flex mt-1">${typeHTML}</div>
+                    <div class="mt-1 text-xs">HP: ${pokemon.hp}</div>
+                `;
+                
+                container.appendChild(pokemonCard);
+            });
+        }
+
+        // Find a battle match
+        function findMatch() {
+            elements.lobby.findMatchBtn.classList.add('hidden');
+            elements.lobby.waitingIndicator.classList.remove('hidden');
+            
+            // Simulate finding an opponent after a delay (in real app, this would use Socket.IO)
+            setTimeout(() => {
+                elements.lobby.waitingIndicator.classList.add('hidden');
+                elements.lobby.opponentFound.classList.remove('hidden');
+                
+                // Random opponent name
+                const opponents = ["Trainer Red", "Blue", "Champion Lance", "Gym Leader Brock", "Elite Four Agatha"];
+                elements.lobby.opponentName.textContent = opponents[Math.floor(Math.random() * opponents.length)];
+                
+                // Start battle after a delay
+                setTimeout(() => {
+                    startBattle();
+                }, 2000);
+            }, 3000);
+        }
+
+        // Start the battle
+        function startBattle() {
+            showScreen('battle-screen');
+            
+            // Reset battle state
+            gameState.currentBattle = {
+                playerPokemon: gameState.selectedTeam[0],
+                opponentPokemon: gameState.availablePokemon[Math.floor(Math.random() * gameState.availablePokemon.length)],
+                playerHealth: 100,
+                opponentHealth: 100,
+                turn: 'player',
+                battleActive: true
+            };
+            
+            // Update battle UI
+            updateBattleUI();
+            
+            // Display battle start message
+            updateBattleMessage(`Battle begins! ${elements.lobby.opponentName.textContent} sent out ${gameState.currentBattle.opponentPokemon.name}!`);
+            
+            setTimeout(() => {
+                updateBattleMessage(`Go, ${gameState.currentBattle.playerPokemon.name}!`);
+                setTimeout(() => {
+                    updateBattleMessage("What will you do?");
+                }, 1500);
+            }, 1500);
+        }
+
+        // Update Battle UI
+        function updateBattleUI() {
+            const battle = gameState.currentBattle;
+            
+            // Update Pokémon sprites and names
+            elements.battle.playerPokemonName.textContent = battle.playerPokemon.name;
+            elements.battle.playerPokemonSprite.src = getPokemonImageUrl(battle.playerPokemon.id);
+            elements.battle.playerPokemonSprite.alt = battle.playerPokemon.name;
+            
+            elements.battle.opponentPokemonName.textContent = battle.opponentPokemon.name;
+            elements.battle.opponentPokemonSprite.src = getPokemonImageUrl(battle.opponentPokemon.id, true);
+            elements.battle.opponentPokemonSprite.alt = battle.opponentPokemon.name;
+            
+            // Update health bars
+            elements.battle.playerHealth.style.width = `${battle.playerHealth}%`;
+            elements.battle.opponentHealth.style.width = `${battle.opponentHealth}%`;
+            
+            // Update health bar colors based on remaining health
+            updateHealthBarColors();
+            
+            // Update moves panel
+            updateMovesPanel();
+            
+            // Update switch panel
+            updateSwitchPanel();
+        }
+
+        // Update health bar colors
+        function updateHealthBarColors() {
+            const battle = gameState.currentBattle;
+            
+            // Player health color
+            if (battle.playerHealth > 50) {
+                elements.battle.playerHealth.style.backgroundColor = "#3ded97"; // Green
+            } else if (battle.playerHealth > 20) {
+                elements.battle.playerHealth.style.backgroundColor = "#ffff00"; // Yellow
+            } else {
+                elements.battle.playerHealth.style.backgroundColor = "#ff5959"; // Red
+            }
+            
+            // Opponent health color
+            if (battle.opponentHealth > 50) {
+                elements.battle.opponentHealth.style.backgroundColor = "#3ded97"; // Green
+            } else if (battle.opponentHealth > 20) {
+                elements.battle.opponentHealth.style.backgroundColor = "#ffff00"; // Yellow
+            } else {
+                elements.battle.opponentHealth.style.backgroundColor = "#ff5959"; // Red
+            }
+        }
+
+        // Update battle message
+        function updateBattleMessage(message) {
+            elements.battle.battleMessage.textContent = message;
+        }
+
+        // Update the moves panel with current Pokémon's moves
+        function updateMovesPanel() {
+            const movesPanel = elements.battle.movesPanel;
+            movesPanel.innerHTML = '';
+            
+            const pokemon = gameState.currentBattle.playerPokemon;
+            
+            pokemon.moves.forEach(move => {
+                const moveBtn = document.createElement('button');
+                moveBtn.className = `move-btn p-3 ${getTypeColor(move.type)}`;
+                moveBtn.textContent = move.name;
+                moveBtn.dataset.move = move.name;
+                moveBtn.dataset.type = move.type;
+                moveBtn.dataset.power = move.power;
+                
+                moveBtn.addEventListener('click', () => useMove(move));
+                movesPanel.appendChild(moveBtn);
+            });
+        }
+
+        // Update the switch panel with available Pokémon
+        function updateSwitchPanel() {
+            const switchPanel = elements.battle.switchPanel;
+            switchPanel.innerHTML = '';
+            
+            gameState.selectedTeam.forEach(pokemon => {
+                // Skip currently active Pokémon
+                if (pokemon.id === gameState.currentBattle.playerPokemon.id) return;
+                
+                const pokemonBtn = document.createElement('button');
+                pokemonBtn.className = 'pokemon-switch-btn p-2 bg-white border-2 border-gray-300 rounded flex flex-col items-center';
+                
+                const typeHTML = pokemon.types.map(type => 
+                    `<span class="text-xs text-white px-1 py-0.5 rounded ${getTypeColor(type)} mr-1">${type}</span>`
+                ).join('');
+                
+                pokemonBtn.innerHTML = `
+                    <img src="${getPokemonImageUrl(pokemon.id)}" alt="${pokemon.name}" class="pokemon-sprite h-12 mb-1">
+                    <div class="text-xs font-bold">${pokemon.name}</div>
+                    <div class="types flex mt-1">${typeHTML}</div>
+                `;
+                
+                pokemonBtn.addEventListener('click', () => switchPokemon(pokemon));
+                switchPanel.appendChild(pokemonBtn);
+            });
+        }
+
+        // Use a move in battle
+        function useMove(move) {
+            if (gameState.currentBattle.turn !== 'player' || !gameState.currentBattle.battleActive) return;
+            
+            // Hide moves panel and show main controls
+            elements.battle.movesPanel.classList.add('hidden');
+            elements.battle.backBtn.classList.add('hidden');
+            elements.battle.fightBtn.classList.remove('hidden');
+            elements.battle.switchBtn.classList.remove('hidden');
+            
+            // Player's attack
+            updateBattleMessage(`${gameState.currentBattle.playerPokemon.name} used ${move.name}!`);
+            
+            // Animate attack
+            elements.battle.playerPokemonSprite.classList.add('attack-right');
+            
+            setTimeout(() => {
+                elements.battle.playerPokemonSprite.classList.remove('attack-right');
+                elements.battle.opponentPokemonSprite.classList.add('damage');
+                
+                // Calculate damage (simplified)
+                const damage = Math.floor(move.power / 10) + Math.floor(Math.random() * 5) + 5;
+                gameState.currentBattle.opponentHealth -= damage;
+                
+                // Clamp health to 0-100
+                gameState.currentBattle.opponentHealth = Math.max(0, gameState.currentBattle.opponentHealth);
+                
+                // Update health bar with animation
+                elements.battle.opponentHealth.style.width = `${gameState.currentBattle.opponentHealth}%`;
+                updateHealthBarColors();
+                
+                setTimeout(() => {
+                    elements.battle.opponentPokemonSprite.classList.remove('damage');
+                    
+                    // Check if opponent fainted
+                    if (gameState.currentBattle.opponentHealth <= 0) {
+                        battleEnd(true);
+                        return;
+                    }
+                    
+                    // Opponent's turn
+                    gameState.currentBattle.turn = 'opponent';
+                    opponentTurn();
+                }, 500);
+            }, 500);
+        }
+
+        // Switch active Pokémon
+        function switchPokemon(pokemon) {
+            // Hide switch panel and show main controls
+            elements.battle.switchPanel.classList.add('hidden');
+            elements.battle.backBtn.classList.add('hidden');
+            elements.battle.fightBtn.classList.remove('hidden');
+            elements.battle.switchBtn.classList.remove('hidden');
+            
+            updateBattleMessage(`Come back, ${gameState.currentBattle.playerPokemon.name}!`);
+            
+            setTimeout(() => {
+                // Update current Pokémon
+                gameState.currentBattle.playerPokemon = pokemon;
+                gameState.currentBattle.playerHealth = 100; // Reset health for simplicity
+                
+                // Update battle UI
+                updateBattleUI();
+                
+                updateBattleMessage(`Go, ${pokemon.name}!`);
+                
+                // If it was player's turn, now it's opponent's turn
+                if (gameState.currentBattle.turn === 'player') {
+                    gameState.currentBattle.turn = 'opponent';
+                    
+                    setTimeout(() => {
+                        opponentTurn();
+                    }, 1500);
+                } else {
+                    setTimeout(() => {
+                        updateBattleMessage("What will you do?");
+                    }, 1500);
+                }
+            }, 1000);
+        }
+
+        // Opponent's turn
+        function opponentTurn() {
+            if (!gameState.currentBattle.battleActive) return;
+            
+            // Pick a random move
+            const opponentPokemon = gameState.currentBattle.opponentPokemon;
+            const randomMove = opponentPokemon.moves[Math.floor(Math.random() * opponentPokemon.moves.length)];
+            
+            updateBattleMessage(`${opponentPokemon.name} used ${randomMove.name}!`);
+            
+            // Animate attack
+            elements.battle.opponentPokemonSprite.classList.add('attack-left');
+            
+            setTimeout(() => {
+                elements.battle.opponentPokemonSprite.classList.remove('attack-left');
+                elements.battle.playerPokemonSprite.classList.add('damage');
+                
+                // Calculate damage (simplified)
+                const damage = Math.floor(randomMove.power / 10) + Math.floor(Math.random() * 5) + 5;
+                gameState.currentBattle.playerHealth -= damage;
+                
+                // Clamp health to 0-100
+                gameState.currentBattle.playerHealth = Math.max(0, gameState.currentBattle.playerHealth);
+                
+                // Update health bar with animation
+                elements.battle.playerHealth.style.width = `${gameState.currentBattle.playerHealth}%`;
+                updateHealthBarColors();
+                
+                setTimeout(() => {
+                    elements.battle.playerPokemonSprite.classList.remove('damage');
+                    
+                    // Check if player fainted
+                    if (gameState.currentBattle.playerHealth <= 0) {
+                        // Check if player has other Pokémon
+                        const remainingPokemon = gameState.selectedTeam.filter(p => 
+                            p.id !== gameState.currentBattle.playerPokemon.id);
+                        
+                        if (remainingPokemon.length > 0) {
+                            updateBattleMessage(`${gameState.currentBattle.playerPokemon.name} fainted! Choose your next Pokémon.`);
+                            
+                            // Force player to switch
+                            elements.battle.fightBtn.classList.add('hidden');
+                            elements.battle.switchBtn.classList.add('hidden');
+                            elements.battle.switchPanel.classList.remove('hidden');
+                            elements.battle.backBtn.classList.add('hidden');
+                        } else {
+                            battleEnd(false);
+                            return;
+                        }
+                    } else {
+                        // Back to player's turn
+                        gameState.currentBattle.turn = 'player';
+                        updateBattleMessage("What will you do?");
+                    }
+                }, 500);
+            }, 500);
+        }
+
+        // End the battle
+        function battleEnd(playerWon) {
+            gameState.currentBattle.battleActive = false;
+            
+            if (playerWon) {
+                updateBattleMessage(`${gameState.currentBattle.opponentPokemon.name} fainted! You won the battle!`);
+                elements.battle.battleResult.textContent = "You Win!";
+            } else {
+                updateBattleMessage(`${gameState.currentBattle.playerPokemon.name} fainted! You lost the battle!`);
+                elements.battle.battleResult.textContent = "You Lose!";
+            }
+            
+            // Hide battle controls
+            elements.battle.fightBtn.classList.add('hidden');
+            elements.battle.switchBtn.classList.add('hidden');
+            
+            // Show battle end screen after a delay
+            setTimeout(() => {
+                elements.battle.battleEnd.classList.remove('hidden');
+            }, 2000);
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Welcome Screen
+            elements.welcome.enterGameBtn.addEventListener('click', () => {
+                const playerName = elements.welcome.playerNameInput.value.trim();
+                if (playerName) {
+                    gameState.playerName = playerName;
+                    showScreen('selection-screen');
+                    initializePokemonSelection();
+                } else {
+                    alert("Please enter your trainer name!");
+                }
+            });
+            
+            // Selection Screen
+            elements.selection.continueBtn.addEventListener('click', () => {
+                showScreen('lobby-screen');
+                updateLobbyTeamDisplay();
+            });
+            
+            elements.selection.searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const pokemonCards = document.querySelectorAll('.pokemon-card');
+                
+                pokemonCards.forEach(card => {
+                    const pokemonName = card.querySelector('h3').textContent.toLowerCase();
+                    if (pokemonName.includes(searchTerm)) {
+                        card.style.display = 'flex';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Lobby Screen
+            elements.lobby.findMatchBtn.addEventListener('click', findMatch);
+            
+            elements.lobby.backToSelectionBtn.addEventListener('click', () => {
+                showScreen('selection-screen');
+            });
+            
+            // Battle Screen
+            elements.battle.fightBtn.addEventListener('click', () => {
+                elements.battle.fightBtn.classList.add('hidden');
+                elements.battle.switchBtn.classList.add('hidden');
+                elements.battle.movesPanel.classList.remove('hidden');
+                elements.battle.backBtn.classList.remove('hidden');
+            });
+            
+            elements.battle.switchBtn.addEventListener('click', () => {
+                elements.battle.fightBtn.classList.add('hidden');
+                elements.battle.switchBtn.classList.add('hidden');
+                elements.battle.switchPanel.classList.remove('hidden');
+                elements.battle.backBtn.classList.remove('hidden');
+            });
+            
+            elements.battle.backBtn.addEventListener('click', () => {
+                elements.battle.movesPanel.classList.add('hidden');
+                elements.battle.switchPanel.classList.add('hidden');
+                elements.battle.backBtn.classList.add('hidden');
+                elements.battle.fightBtn.classList.remove('hidden');
+                elements.battle.switchBtn.classList.remove('hidden');
+            });
+            
+            elements.battle.returnToLobbyBtn.addEventListener('click', () => {
+                elements.battle.battleEnd.classList.add('hidden');
+                elements.lobby.opponentFound.classList.add('hidden');
+                elements.lobby.findMatchBtn.classList.remove('hidden');
+                showScreen('lobby-screen');
+            });
+        }
+
+        // Initialize the game
+        function initGame() {
+            setupEventListeners();
+            showScreen('welcome-screen');
+        }
+
+        // Start the game when the page loads
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>
